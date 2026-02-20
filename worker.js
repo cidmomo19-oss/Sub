@@ -1,4 +1,3 @@
-// --- LOGIKA HALAMAN USER (SUB4UNLOCK PRO - INSTANT VERIFY) ---
 async function handleUserPage(id, env) {
   const dataRaw = await env.DATABASE.get(id);
   

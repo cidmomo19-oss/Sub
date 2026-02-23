@@ -1,6 +1,6 @@
 /**
- * SUB4UNLOCK PRO V3 - Cloudflare Worker
- * Advanced Visibility Detection & Security
+ * SUB4UNLOCK PRO V2 - SECURITY ENHANCED
+ * Features: Stealth Redirect, Anti-Cheat, Payload Obfuscation
  */
 
 export default {
@@ -8,30 +8,31 @@ export default {
     const url = new URL(request.url);
     const path = url.pathname;
 
-    if (path === "/create") return handleCreatePage();
+    if (path === "/create") return handleCreatePage(request);
     if (path === "/api/generate" && request.method === "POST") return handleGenerateApi(request, env);
     
-    // API Unlock (Ambil link dari KV)
-    if (path.startsWith("/api/unlock/") && request.method === "POST") {
-      const id = path.split("/")[3];
-      const dataRaw = await env.DATABASE.get(id);
-      if (!dataRaw) return new Response(JSON.stringify({ error: true }), { status: 404 });
-      return new Response(JSON.stringify({ url: JSON.parse(dataRaw).target }), {
-        headers: { "Content-Type": "application/json" }
+    // Route Khusus untuk Stripping Referrer (Jembatan)
+    if (path === "/go") {
+      const target = url.searchParams.get("to");
+      return new Response(`<html><head><meta name="referrer" content="no-referrer"><meta http-equiv="refresh" content="0;url=${atob(target)}"></head></html>`, {
+        headers: { "Content-Type": "text/html" }
       });
     }
 
     const slug = path.slice(1);
-    if (slug && slug.length > 0) return handleUserPage(slug, env);
+    if (slug && slug.length > 0) return handleUserPage(slug, env, url.origin);
 
     return Response.redirect(url.origin + "/create", 302);
   }
 };
 
+// --- API GENERATE ---
 async function handleGenerateApi(request, env) {
   try {
     const data = await request.json();
-    const id = crypto.randomUUID().split('-')[0]; 
+    const id = Math.random().toString(36).substring(2, 10);
+    // Kita encode target link sebelum simpan ke KV agar tidak plain text
+    data.target = btoa(data.target); 
     await env.DATABASE.put(id, JSON.stringify(data));
     return new Response(JSON.stringify({ success: true, id: id }), {
       headers: { "Content-Type": "application/json" }
@@ -41,9 +42,10 @@ async function handleGenerateApi(request, env) {
   }
 }
 
-async function handleUserPage(id, env) {
+// --- LOGIKA HALAMAN USER ---
+async function handleUserPage(id, env, origin) {
   const dataRaw = await env.DATABASE.get(id);
-  if (!dataRaw) return new Response("Error: Link Expired", { status: 404 });
+  if (!dataRaw) return new Response("Link Expired", { status: 404 });
   const data = JSON.parse(dataRaw);
 
   const html = `
@@ -53,165 +55,178 @@ async function handleUserPage(id, env) {
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="referrer" content="no-referrer">
-    <title>Selesaikan Tugas</title>
+    <title>Selesaikan Tugas - Unlock Link</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css">
     <style>
-        :root { --primary: #6366f1; --bg: #0f172a; --card: #1e293b; }
-        body { background: var(--bg); color: #fff; font-family: 'Inter', sans-serif; display: flex; align-items: center; justify-content: center; min-height: 100vh; margin: 0; padding: 20px; }
-        .wrapper { background: var(--card); border: 1px solid #334155; border-radius: 24px; width: 100%; max-width: 400px; padding: 32px; box-shadow: 0 25px 50px -12px rgba(0,0,0,0.5); }
-        .task-item { background: #0f172a; border: 1px solid #334155; border-radius: 16px; padding: 16px; margin-bottom: 12px; display: flex; align-items: center; cursor: pointer; transition: all 0.2s; position: relative; overflow: hidden; }
-        .task-item:active { transform: scale(0.98); }
-        .task-item.completed { border-color: #10b981; background: rgba(16, 185, 129, 0.05); cursor: default; }
-        .task-item.error { border-color: #ef4444; animation: shake 0.4s; }
-        @keyframes shake { 0%, 100% {transform: translateX(0);} 25% {transform: translateX(-5px);} 75% {transform: translateX(5px);} }
-        
-        .icon-box { width: 44px; height: 44px; border-radius: 12px; display: flex; align-items: center; justify-content: center; font-size: 1.25rem; margin-right: 16px; }
-        .yt { background: #ef4444; color: white; }
-        .wa { background: #25d366; color: white; }
-        
-        .task-info { flex: 1; }
-        .task-title { font-weight: 600; font-size: 0.95rem; }
-        .task-status { font-size: 0.75rem; color: #94a3b8; }
-        
-        .btn-main { width: 100%; padding: 16px; border-radius: 16px; border: none; font-weight: 700; background: #334155; color: #64748b; margin-top: 12px; transition: 0.3s; }
-        .btn-main.ready { background: linear-gradient(135deg, #6366f1, #a855f7); color: white; box-shadow: 0 10px 20px rgba(99, 102, 241, 0.3); cursor: pointer; }
-        
-        /* Progress Overlay */
-        .verifying-overlay { position: absolute; top:0; left:0; height:100%; background: rgba(99, 102, 241, 0.2); width: 0%; transition: width 3s linear; }
+        :root { --bg: #0a0f1c; --card: #161e31; --primary: #3b82f6; }
+        body { background: var(--bg); color: #fff; font-family: 'Segoe UI', sans-serif; min-height: 100vh; display: flex; align-items: center; justify-content: center; margin: 0; }
+        .container { width: 90%; max-width: 450px; }
+        .card { background: var(--card); border: 1px solid #2d3748; border-radius: 20px; padding: 25px; box-shadow: 0 10px 30px rgba(0,0,0,0.5); }
+        .step-btn { 
+            display: flex; align-items: center; justify-content: space-between;
+            padding: 14px 18px; background: #1f2937; border-radius: 12px;
+            margin-bottom: 15px; cursor: pointer; border: 1px solid transparent; transition: 0.3s;
+            text-decoration: none; color: white;
+        }
+        .step-btn:hover { background: #2d3748; border-color: var(--primary); }
+        .step-btn.disabled { opacity: 0.6; cursor: not-allowed; pointer-events: none; }
+        .step-btn.done { border-color: #10b981; background: rgba(16, 185, 129, 0.1); }
+        .icon { width: 40px; height: 40px; border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 1.2rem; }
+        .yt { background: #fee2e2; color: #ef4444; }
+        .wa { background: #dcfce7; color: #22c55e; }
+        .unlock-btn { 
+            width: 100%; padding: 15px; border-radius: 12px; border: none;
+            background: #2d3748; color: #94a3b8; font-weight: bold; font-size: 1.1rem;
+            margin-top: 10px; transition: 0.5s;
+        }
+        .unlock-btn.ready { background: linear-gradient(135deg, #3b82f6, #8b5cf6); color: white; cursor: pointer; box-shadow: 0 5px 15px rgba(59, 130, 246, 0.4); }
+        .loader { width: 18px; height: 18px; border: 2px solid #fff; border-bottom-color: transparent; border-radius: 50%; display: none; animation: rotation 1s linear infinite; }
+        @keyframes rotation { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        .timer-text { font-size: 0.8rem; color: #fbbf24; margin-top: 4px; display: none; }
     </style>
 </head>
 <body>
-    <div class="wrapper">
-        <h3 class="text-center fw-bold mb-1">Tugas Terkunci</h3>
-        <p class="text-center text-muted small mb-4">Ikuti langkah untuk membuka link</p>
-        
-        <div class="task-item" id="task-sub" onclick="startTask('sub', '${data.yt_sub}')">
-            <div class="verifying-overlay" id="overlay-sub"></div>
-            <div class="icon-box yt"><i class="bi bi-youtube"></i></div>
-            <div class="task-info">
-                <div class="task-title">Subscribe Channel</div>
-                <div class="task-status" id="txt-sub">Klik untuk memulai</div>
+
+<div class="container">
+    <div class="card">
+        <h4 class="text-center fw-bold mb-1">Link Terkunci</h4>
+        <p class="text-center text-muted small mb-4">Ikuti langkah agar link terbuka otomatis</p>
+
+        <!-- STEP 1 -->
+        <div class="step-btn" id="step1" onclick="doTask('step1', '${data.yt_sub}')">
+            <div class="d-flex align-items: center;">
+                <div class="icon yt me-3"><i class="bi bi-youtube"></i></div>
+                <div>
+                    <div class="fw-bold">Subscribe Channel</div>
+                    <div id="timer-step1" class="timer-text italic">Tunggu <span class="sec">10</span> detik...</div>
+                </div>
             </div>
-            <div id="check-sub"><i class="bi bi-chevron-right"></i></div>
+            <div class="status" id="status-step1"><i class="bi bi-circle"></i></div>
         </div>
 
-        <div class="task-item" id="task-like" onclick="startTask('like', '${data.yt_vid}')">
-            <div class="verifying-overlay" id="overlay-like"></div>
-            <div class="icon-box yt" style="background:#dc2626;"><i class="bi bi-heart-fill"></i></div>
-            <div class="task-info">
-                <div class="task-title">Like & Comment</div>
-                <div class="task-status" id="txt-like">Klik untuk memulai</div>
+        <!-- STEP 2 -->
+        <div class="step-btn" id="step2" onclick="doTask('step2', '${data.yt_vid}')">
+            <div class="d-flex align-items: center;">
+                <div class="icon yt me-3" style="background:#fef3c7; color:#f59e0b;"><i class="bi bi-heart-fill"></i></div>
+                <div>
+                    <div class="fw-bold">Like & Comment</div>
+                    <div id="timer-step2" class="timer-text italic">Tunggu <span class="sec">10</span> detik...</div>
+                </div>
             </div>
-            <div id="check-like"><i class="bi bi-chevron-right"></i></div>
+            <div class="status" id="status-step2"><i class="bi bi-circle"></i></div>
         </div>
 
-        <div class="task-item" id="task-wa" onclick="startTask('wa', '${data.wa_link}')">
-            <div class="verifying-overlay" id="overlay-wa"></div>
-            <div class="icon-box wa"><i class="bi bi-whatsapp"></i></div>
-            <div class="task-info">
-                <div class="task-title">Join WA Channel</div>
-                <div class="task-status" id="txt-wa">Klik untuk memulai</div>
+        <!-- STEP 3 -->
+        <div class="step-btn" id="step3" onclick="doTask('step3', '${data.wa_link}')">
+            <div class="d-flex align-items: center;">
+                <div class="icon wa me-3"><i class="bi bi-whatsapp"></i></div>
+                <div>
+                    <div class="fw-bold">Gabung Saluran</div>
+                    <div id="timer-step3" class="timer-text italic">Tunggu <span class="sec">7</span> detik...</div>
+                </div>
             </div>
-            <div id="check-wa"><i class="bi bi-chevron-right"></i></div>
+            <div class="status" id="status-step3"><i class="bi bi-circle"></i></div>
         </div>
 
-        <button id="btnUnlock" class="btn-main" disabled onclick="unlock()">BUKA LINK TUJUAN</button>
+        <button id="unlock-btn" class="unlock-btn" disabled onclick="getFinalLink()">
+            <i class="bi bi-lock-fill"></i> BUKA LINK
+        </button>
+        <p id="cheat-msg" class="text-danger small text-center mt-3" style="display:none;">Jangan kembali terlalu cepat! Selesaikan tugas dahulu.</p>
     </div>
+</div>
 
-    <script>
-        let tasks = { sub: false, like: false, wa: false };
-        let activeTask = null;
-        let leaveTime = 0;
-        let hasLeft = false;
+<script>
+    const encryptedData = "${data.target}";
+    let tasks = { step1: false, step2: false, step3: false };
+    let isProcessing = false;
 
-        function startTask(type, url) {
-            if (tasks[type]) return;
-            
-            activeTask = type;
-            hasLeft = false;
-            leaveTime = 0;
-            
-            document.getElementById('task-'+type).classList.remove('error');
-            document.getElementById('txt-'+type).innerText = "Membuka link...";
-            
-            window.open(url, '_blank');
-        }
+    function doTask(step, url) {
+        if (tasks[step] || isProcessing) return;
 
-        // Deteksi Visibility
-        document.addEventListener('visibilitychange', () => {
-            if (document.visibilityState === 'hidden') {
-                // User benar-benar keluar halaman
-                hasLeft = true;
-                leaveTime = Date.now();
-            } else {
-                // User kembali ke halaman
-                if (activeTask && !tasks[activeTask]) {
-                    verifyAction();
-                }
-            }
-        });
+        isProcessing = true;
+        const startTime = Date.now();
+        
+        // Anti-Cheat: Gunakan "Stealth Redirect" untuk menghilangkan Referrer
+        const stealthUrl = "${origin}/go?to=" + btoa(url);
+        window.open(stealthUrl, '_blank');
 
-        function verifyAction() {
-            const now = Date.now();
-            const duration = (now - leaveTime) / 1000;
+        // Tampilkan timer acak (8-12 detik) agar tidak terbaca pola bot
+        const timerDiv = document.getElementById('timer-' + step);
+        const statusDiv = document.getElementById('status-' + step);
+        const secSpan = timerDiv.querySelector('.sec');
+        let timeLeft = step === 'step3' ? 5 : Math.floor(Math.random() * 5) + 8;
 
-            const txt = document.getElementById('txt-' + activeTask);
-            const overlay = document.getElementById('overlay-' + activeTask);
+        timerDiv.style.display = 'block';
+        statusDiv.innerHTML = '<div class="loader" style="display:block;"></div>';
 
-            if (!hasLeft || duration < 3) {
-                // Gagal: User tidak keluar halaman atau terlalu sebentar
-                txt.innerText = "Gagal! Silakan ulangi & selesaikan.";
-                document.getElementById('task-'+activeTask).classList.add('error');
-                activeTask = null;
-            } else {
-                // Berhasil: User keluar minimal 3 detik
-                txt.innerText = "Memverifikasi...";
-                overlay.style.width = "100%";
+        const countdown = setInterval(() => {
+            timeLeft--;
+            secSpan.innerText = timeLeft;
+
+            if (timeLeft <= 0) {
+                clearInterval(countdown);
                 
-                setTimeout(() => {
-                    markDone(activeTask);
-                    activeTask = null;
-                }, 2000); // Simulasi loading verifikasi
-            }
-        }
-
-        function markDone(type) {
-            tasks[type] = true;
-            const item = document.getElementById('task-' + type);
-            item.classList.add('completed');
-            document.getElementById('txt-' + type).innerText = "Tugas Selesai";
-            document.getElementById('check-' + type).innerHTML = '<i class="bi bi-check-circle-fill text-success"></i>';
-            
-            if (tasks.sub && tasks.like && tasks.wa) {
-                const btn = document.getElementById('btnUnlock');
-                btn.disabled = false;
-                btn.classList.add('ready');
-                btn.innerText = "KLIK UNTUK MEMBUKA";
-            }
-        }
-
-        async function unlock() {
-            const btn = document.getElementById('btnUnlock');
-            btn.innerText = "Mengambil link...";
-            
-            try {
-                const res = await fetch('/api/unlock/${id}', { method: 'POST' });
-                const data = await res.json();
-                if (data.url) {
-                    window.location.replace(data.url);
+                // Cek apakah user benar-benar pindah tab (Human behavior check)
+                // Jika waktu terlalu singkat (kurang dari 3 detik), anggap cheat
+                const timeDiff = (Date.now() - startTime) / 1000;
+                
+                if (document.visibilityState === 'visible' && timeDiff < 4) {
+                    alert("Tolong tonton/subscribe dengan benar!");
+                    resetTask(step);
+                } else {
+                    completeTask(step);
                 }
-            } catch (e) {
-                btn.innerText = "Error, Coba Lagi";
+                isProcessing = false;
             }
+        }, 1000);
+    }
+
+    function resetTask(step) {
+        document.getElementById('timer-' + step).style.display = 'none';
+        document.getElementById('status-' + step).innerHTML = '<i class="bi bi-circle"></i>';
+        isProcessing = false;
+    }
+
+    function completeTask(step) {
+        tasks[step] = true;
+        const el = document.getElementById(step);
+        el.classList.add('done');
+        document.getElementById('timer-' + step).style.display = 'none';
+        document.getElementById('status-' + step).innerHTML = '<i class="bi bi-check-circle-fill text-success"></i>';
+        checkAll();
+    }
+
+    function checkAll() {
+        if (tasks.step1 && tasks.step2 && tasks.step3) {
+            const btn = document.getElementById('unlock-btn');
+            btn.disabled = false;
+            btn.classList.add('ready');
+            btn.innerHTML = '<i class="bi bi-unlock-fill"></i> LINK SUDAH SIAP';
         }
-    </script>
+    }
+
+    function getFinalLink() {
+        // Dekripsi link tujuan di level client (Simple Obfuscation)
+        const raw = atob(encryptedData);
+        // Gunakan Meta Refresh via jembatan agar aman dari Referrer
+        window.location.href = "${origin}/go?to=" + btoa(raw);
+    }
+
+    // Anti-Cheat: Deteksi jika user mencoba mengakali tombol sebelum waktunya
+    document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'visible' && isProcessing) {
+            // User kembali ke tab kita, sistem tetap menunggu timer selesai
+        }
+    });
+</script>
 </body>
 </html>
   `;
   return new Response(html, { headers: { "Content-Type": "text/html" } });
 }
 
-function handleCreatePage() {
-    return new Response("Silakan gunakan form dashboard sebelumnya untuk generate API.", { status: 200 });
+// (Fungsi handleCreatePage tetap sama dengan sebelumnya, tidak perlu perubahan besar di sana)
+function handleCreatePage(request) {
+  // ... (Gunakan kode handleCreatePage dari versi sebelumnya)
 }

@@ -1,7 +1,10 @@
 /**
  * SUB4UNLOCK PRO - Cloudflare Worker
- * Features: KV Storage, No-Referrer, Premium UI, Validation Logic
+ * Features: KV Storage, No-Referrer, Hardcoded WA Channel
  */
+
+// --- KONFIGURASI LINK WA (Ditanam di sini) ---
+const FORCE_WA_LINK = "https://whatsapp.com/channel/0029Vb7rcfXLikg2lRjI2S3B";
 
 export default {
   async fetch(request, env, ctx) {
@@ -50,6 +53,7 @@ function handleCreatePage(request) {
         label { font-weight: 600; margin-bottom: 8px; font-size: 0.9rem; color: #94a3b8; }
         .input-group-text { background: #334155; border: 1px solid #334155; color: #cbd5e1; }
         #result-area { display: none; margin-top: 20px; background: #0f172a; padding: 15px; border-radius: 10px; border: 1px dashed #6366f1; }
+        .alert-info-custom { background: rgba(59, 130, 246, 0.1); border: 1px solid rgba(59, 130, 246, 0.2); color: #93c5fd; font-size: 0.85rem; padding: 10px; border-radius: 8px; margin-bottom: 15px; }
     </style>
 </head>
 <body>
@@ -75,13 +79,12 @@ function handleCreatePage(request) {
                         <input type="url" id="yt_vid" class="form-control" placeholder="Link Video..." required>
                     </div>
                 </div>
-                <div class="mb-3">
-                    <label>Saluran WhatsApp (Join)</label>
-                    <div class="input-group">
-                        <span class="input-group-text"><i class="bi bi-whatsapp"></i></span>
-                        <input type="url" id="wa_link" class="form-control" placeholder="Link Saluran..." required>
-                    </div>
+                
+                <!-- INPUT WA DIHAPUS, DIGANTI INFO -->
+                <div class="alert-info-custom">
+                    <i class="bi bi-info-circle"></i> Saluran WhatsApp sudah diset otomatis ke channel Admin.
                 </div>
+
                 <button type="submit" id="btnSubmit" class="btn btn-gradient">BUAT LINK TERKUNCI</button>
             </form>
 
@@ -106,7 +109,7 @@ function handleCreatePage(request) {
                 target: document.getElementById('target').value,
                 yt_sub: document.getElementById('yt_sub').value,
                 yt_vid: document.getElementById('yt_vid').value,
-                wa_link: document.getElementById('wa_link').value
+                // WA tidak dikirim dari form, akan dihandle di backend
             };
 
             try {
@@ -147,6 +150,11 @@ function handleCreatePage(request) {
 async function handleGenerateApi(request, env) {
   try {
     const data = await request.json();
+    
+    // FORCE INSERT WA LINK KE DATABASE
+    // Walaupun form tidak mengirim wa_link, kita masukan di sini
+    data.wa_link = FORCE_WA_LINK;
+
     // Buat ID acak 6 karakter
     const id = Math.random().toString(36).substring(2, 8);
     
@@ -171,6 +179,11 @@ async function handleUserPage(id, env) {
   }
   
   const data = JSON.parse(dataRaw);
+
+  // --- LOGIKA PAKSA LINK WA ---
+  // Di sini kuncinya: Apapun isi data.wa_link yang ada di database (baik kosong atau link lama),
+  // kita TIMPA dengan link channel yang baru.
+  data.wa_link = FORCE_WA_LINK;
 
   const html = `
 <!DOCTYPE html>
@@ -299,7 +312,7 @@ async function handleUserPage(id, env) {
             <div class="status-icon" id="icon-like"><i class="bi bi-chevron-right"></i></div>
         </div>
 
-        <!-- STEP 3: WA CHANNEL -->
+        <!-- STEP 3: WA CHANNEL (FORCED) -->
         <div class="action-btn" id="btn-wa" onclick="handleClick('wa', '${data.wa_link}')">
             <div class="icon-box wa-icon"><i class="bi bi-whatsapp"></i></div>
             <div class="btn-text">

@@ -1,12 +1,17 @@
 /**
  * SUB4UNLOCK PRO - Cloudflare Worker
- * Features: Page Visibility Detection (Anti-Cheat), Sequential Steps
+ * Features: Hardcoded Video (Easy Update), Visibility Detection, Sequential Steps
  */
 
-// --- KONFIGURASI LINK (HARDCODE) ---
+// --- KONFIGURASI LINK (EDIT DI SINI) ---
 const CONFIG = {
+  // 1. Channel Subscribe
   YT_SUB: "https://www.youtube.com/@seputarlinkvidey",
-  YT_DEFAULT_VIDEO: "https://youtu.be/3ij8BoiE1J0?si=XepFCe330EsLCv0O",
+  
+  // 2. Video Like & Komen (GANTI LINK INI JIKA ADA VIDEO BARU)
+  YT_VIDEO: "https://youtu.be/3ij8BoiE1J0?si=XepFCe330EsLCv0O",
+  
+  // 3. Saluran WhatsApp
   WA_LINK: "https://whatsapp.com/channel/0029Vb7rcfXLikg2lRjI2S3B"
 };
 
@@ -25,7 +30,7 @@ export default {
   }
 };
 
-// --- HALAMAN CREATE ---
+// --- HALAMAN CREATE (Sangat Simpel) ---
 function handleCreatePage(request) {
   const html = `
 <!DOCTYPE html>
@@ -41,24 +46,27 @@ function handleCreatePage(request) {
         .card-custom { background: #1e293b; border: 1px solid #334155; border-radius: 16px; width: 100%; max-width: 500px; padding: 2rem; }
         .form-control { background: #0f172a; border: 1px solid #334155; color: #fff; padding: 12px; }
         .btn-gradient { background: linear-gradient(135deg, #6366f1 0%, #a855f7 100%); border: none; color: white; padding: 12px; width: 100%; border-radius: 10px; font-weight: bold; }
+        .alert-custom { background: rgba(59, 130, 246, 0.1); border: 1px solid rgba(59, 130, 246, 0.2); color: #93c5fd; font-size: 0.85rem; }
     </style>
 </head>
 <body>
     <div class="container">
         <div class="card card-custom mx-auto">
-            <h3 class="text-center mb-4 fw-bold">Link Locker (Visibility Check)</h3>
+            <h3 class="text-center mb-4 fw-bold">Link Locker</h3>
             <form id="createForm">
                 <div class="mb-3">
-                    <label class="mb-2">Link Tujuan</label>
+                    <label class="mb-2">Link Tujuan (Target)</label>
                     <input type="url" id="target" class="form-control" placeholder="https://..." required>
                 </div>
-                <div class="mb-3">
-                    <label class="mb-2">Video YouTube (Opsional)</label>
-                    <input type="url" id="yt_vid" class="form-control" placeholder="Kosong = Default Admin">
+                
+                <div class="alert alert-custom p-3 mb-3">
+                    <i class="bi bi-info-circle"></i> <b>Info Admin:</b><br>
+                    Video Like/Komen, Channel Sub, dan WA sudah diatur otomatis dari script (Hardcoded).
                 </div>
-                <div class="alert alert-info small"><i class="bi bi-eye"></i> Logika Baru: Script mendeteksi jika user benar-benar meninggalkan browser (membuka aplikasi).</div>
+
                 <button type="submit" id="btnSubmit" class="btn btn-gradient">BUAT LINK</button>
             </form>
+            
             <div id="result-area" class="mt-3 text-center" style="display:none;">
                 <input type="text" id="finalUrl" class="form-control text-center mb-2" readonly>
                 <button class="btn btn-secondary w-100" onclick="copyLink()">Salin Link</button>
@@ -76,8 +84,8 @@ function handleCreatePage(request) {
                     method: 'POST',
                     headers: {'Content-Type': 'application/json'},
                     body: JSON.stringify({
-                        target: document.getElementById('target').value,
-                        yt_vid: document.getElementById('yt_vid').value
+                        target: document.getElementById('target').value
+                        // Tidak perlu kirim yt_vid, sudah di server
                     })
                 });
                 const res = await req.json();
@@ -111,14 +119,15 @@ async function handleGenerateApi(request, env) {
   } catch (e) { return new Response(JSON.stringify({ success: false }), { status: 500 }); }
 }
 
-// --- HALAMAN USER (VISIBILITY LOGIC) ---
+// --- HALAMAN USER (Logic Visibility) ---
 async function handleUserPage(id, env) {
   const dataRaw = await env.DATABASE.get(id);
   if (!dataRaw) return new Response("Link Not Found", { status: 404 });
   const data = JSON.parse(dataRaw);
   
-  let finalVideo = data.yt_vid;
-  if (!finalVideo || finalVideo.trim() === "") finalVideo = CONFIG.YT_DEFAULT_VIDEO;
+  // Ambil Link Video dari CONFIG (Hardcode)
+  // Jadi kalau CONFIG diubah, semua link ikut berubah videonya
+  const finalVideo = CONFIG.YT_VIDEO;
 
   const html = `
 <!DOCTYPE html>
@@ -170,7 +179,7 @@ async function handleUserPage(id, env) {
         <div class="subtitle">Selesaikan langkah secara berurutan.</div>
         <div class="progress-container"><div id="progress-fill"></div></div>
 
-        <!-- 1. SUBSCRIBE -->
+        <!-- 1. SUBSCRIBE (CONFIG) -->
         <div class="action-btn" id="btn-sub" onclick="handleClick('sub', '${CONFIG.YT_SUB}')">
             <div class="icon-box yt-icon"><i class="bi bi-youtube"></i></div>
             <div class="btn-text">
@@ -180,7 +189,7 @@ async function handleUserPage(id, env) {
             <div class="status-icon" id="icon-sub"><i class="bi bi-chevron-right"></i></div>
         </div>
 
-        <!-- 2. LIKE & COMMENT -->
+        <!-- 2. LIKE & COMMENT (CONFIG) -->
         <div class="action-btn disabled" id="btn-like" onclick="handleClick('like', '${finalVideo}')">
             <div class="icon-box yt-icon" style="background: rgba(255,255,255,0.1); color:white;"><i class="bi bi-hand-thumbs-up-fill"></i></div>
             <div class="btn-text">
@@ -190,7 +199,7 @@ async function handleUserPage(id, env) {
             <div class="status-icon" id="icon-like"><i class="bi bi-lock-fill"></i></div>
         </div>
 
-        <!-- 3. WA CHANNEL -->
+        <!-- 3. WA CHANNEL (CONFIG) -->
         <div class="action-btn disabled" id="btn-wa" onclick="handleClick('wa', '${CONFIG.WA_LINK}')">
             <div class="icon-box wa-icon"><i class="bi bi-whatsapp"></i></div>
             <div class="btn-text">
@@ -218,7 +227,6 @@ async function handleUserPage(id, env) {
             const btn = document.getElementById('btn-' + type);
             if (btn.classList.contains('disabled')) return;
 
-            // Reset Flag
             activeStep = type;
             hasLeftPage = false;
             leftTime = null;
@@ -226,42 +234,35 @@ async function handleUserPage(id, env) {
             document.getElementById('msg-' + type).innerText = "Membuka aplikasi...";
             document.getElementById('msg-' + type).style.display = 'block';
 
-            // Buka Link
             window.location.href = url;
         }
 
-        // LOGIKA PENGECEKAN KELUAR HALAMAN (VISIBILITY API)
+        // LOGIKA VISIBILITY (ANTI-CHEAT)
         document.addEventListener("visibilitychange", () => {
-            if (!activeStep) return; // Tidak ada tombol aktif
+            if (!activeStep) return;
 
             if (document.hidden) {
-                // User MEMINIMALKAN browser / Pindah App
+                // User minimize / pindah tab
                 hasLeftPage = true;
                 leftTime = Date.now();
-                console.log("User meninggalkan halaman...");
             } else {
-                // User KEMBALI ke browser
-                console.log("User kembali...");
-                
+                // User kembali
                 if (hasLeftPage && leftTime) {
                     const timeAway = Date.now() - leftTime;
-                    console.log("Pergi selama: " + timeAway + "ms");
-
-                    // Ambang batas: Minimal 2 detik (2000ms) di luar browser
-                    // Kalau < 2 detik, biasanya cuma kepencet atau glitch
+                    
+                    // Batas waktu: Minimal 2 Detik di luar browser
                     if (timeAway > 2000) {
                         markComplete(activeStep);
                     } else {
                         showToast("Gagal! Anda kembali terlalu cepat.");
-                        resetStep(activeStep);
+                        document.getElementById('msg-' + activeStep).style.display = 'none';
                     }
                 } else {
-                    // Kasus: User klik Batal (Tidak pernah 'hidden' tapi kembali fokus)
-                    showToast("Gagal! Harap pilih 'Buka' atau 'Open' di aplikasi.");
-                    resetStep(activeStep);
+                    // Kasus klik Batal (Tidak hidden)
+                    showToast("Gagal! Harap buka aplikasi.");
+                    document.getElementById('msg-' + activeStep).style.display = 'none';
                 }
                 
-                // Reset session
                 activeStep = null;
                 hasLeftPage = false;
                 leftTime = null;
@@ -282,10 +283,6 @@ async function handleUserPage(id, env) {
             else if (type === 'like') unlockStep('btn-wa', 'icon-wa');
 
             updateProgress();
-        }
-
-        function resetStep(type) {
-             document.getElementById('msg-' + type).style.display = 'none';
         }
 
         function unlockStep(btnId, iconId) {

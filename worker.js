@@ -1,17 +1,12 @@
 /**
  * SUB4UNLOCK PRO - Cloudflare Worker
- * Features: Sequential Steps (Antrian), Deep Link, Anti-Spam
+ * Features: Page Visibility Detection (Anti-Cheat), Sequential Steps
  */
 
 // --- KONFIGURASI LINK (HARDCODE) ---
 const CONFIG = {
-  // 1. Subscribe
   YT_SUB: "https://www.youtube.com/@seputarlinkvidey",
-  
-  // 2. Video Default (Jika input kosong)
   YT_DEFAULT_VIDEO: "https://youtu.be/3ij8BoiE1J0?si=XepFCe330EsLCv0O",
-  
-  // 3. Saluran WhatsApp
   WA_LINK: "https://whatsapp.com/channel/0029Vb7rcfXLikg2lRjI2S3B"
 };
 
@@ -20,22 +15,17 @@ export default {
     const url = new URL(request.url);
     const path = url.pathname;
 
-    // ROUTE: CREATE
     if (path === "/create") return handleCreatePage(request);
-
-    // ROUTE: API GENERATE
     if (path === "/api/generate" && request.method === "POST") return handleGenerateApi(request, env);
-
-    // ROUTE: USER PAGE
+    
     const slug = path.slice(1); 
     if (slug && slug.length > 0) return handleUserPage(slug, env);
 
-    // DEFAULT
     return Response.redirect(url.origin + "/create", 302);
   }
 };
 
-// --- LOGIKA HALAMAN CREATE ---
+// --- HALAMAN CREATE ---
 function handleCreatePage(request) {
   const html = `
 <!DOCTYPE html>
@@ -43,43 +33,36 @@ function handleCreatePage(request) {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Dashboard - Create Locked Link</title>
+    <title>Link Locker Pro</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css" rel="stylesheet">
     <style>
-        body { background: #0f172a; color: #e2e8f0; font-family: 'Inter', sans-serif; min-height: 100vh; display: flex; align-items: center; justify-content: center; }
-        .card-custom { background: #1e293b; border: 1px solid #334155; border-radius: 16px; box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5); width: 100%; max-width: 500px; }
-        .form-control { background: #0f172a; border: 1px solid #334155; color: #fff; padding: 12px; border-radius: 10px; }
-        .btn-gradient { background: linear-gradient(135deg, #6366f1 0%, #a855f7 100%); border: none; color: white; font-weight: 700; padding: 12px; border-radius: 10px; width: 100%; margin-top: 10px; }
-        label { font-weight: 600; margin-bottom: 8px; font-size: 0.9rem; color: #94a3b8; }
-        .alert-info-custom { background: rgba(59, 130, 246, 0.1); border: 1px solid rgba(59, 130, 246, 0.2); color: #93c5fd; font-size: 0.85rem; padding: 10px; border-radius: 8px; margin-bottom: 15px; }
-        #result-area { display: none; margin-top: 20px; background: #0f172a; padding: 15px; border-radius: 10px; border: 1px dashed #6366f1; }
+        body { background: #0f172a; color: #e2e8f0; font-family: sans-serif; min-height: 100vh; display: flex; align-items: center; justify-content: center; }
+        .card-custom { background: #1e293b; border: 1px solid #334155; border-radius: 16px; width: 100%; max-width: 500px; padding: 2rem; }
+        .form-control { background: #0f172a; border: 1px solid #334155; color: #fff; padding: 12px; }
+        .btn-gradient { background: linear-gradient(135deg, #6366f1 0%, #a855f7 100%); border: none; color: white; padding: 12px; width: 100%; border-radius: 10px; font-weight: bold; }
     </style>
 </head>
 <body>
-    <div class="container p-3">
-        <div class="card card-custom p-4 mx-auto">
-            <h3 class="text-center mb-4 fw-bold"><i class="bi bi-link-45deg"></i> Link Locker</h3>
+    <div class="container">
+        <div class="card card-custom mx-auto">
+            <h3 class="text-center mb-4 fw-bold">Link Locker (Visibility Check)</h3>
             <form id="createForm">
                 <div class="mb-3">
-                    <label>Link Asli (Tujuan)</label>
+                    <label class="mb-2">Link Tujuan</label>
                     <input type="url" id="target" class="form-control" placeholder="https://..." required>
                 </div>
                 <div class="mb-3">
-                    <label>Video YouTube (Like & Komen)</label>
-                    <input type="url" id="yt_vid" class="form-control" placeholder="Kosongkan = Pakai Default">
-                    <small class="text-muted" style="font-size: 0.75rem;">*Otomatis pakai video default Admin jika kosong.</small>
+                    <label class="mb-2">Video YouTube (Opsional)</label>
+                    <input type="url" id="yt_vid" class="form-control" placeholder="Kosong = Default Admin">
                 </div>
-                <div class="alert-info-custom"><i class="bi bi-shield-lock"></i> Mode Antrian Aktif: User harus menyelesaikan langkah satu per satu.</div>
-                <button type="submit" id="btnSubmit" class="btn btn-gradient">BUAT LINK TERKUNCI</button>
+                <div class="alert alert-info small"><i class="bi bi-eye"></i> Logika Baru: Script mendeteksi jika user benar-benar meninggalkan browser (membuka aplikasi).</div>
+                <button type="submit" id="btnSubmit" class="btn btn-gradient">BUAT LINK</button>
             </form>
-            <div id="result-area" class="text-center">
-                <p class="small text-muted mb-2">Link Berhasil Dibuat:</p>
-                <div class="input-group">
-                    <input type="text" id="finalUrl" class="form-control text-center" readonly>
-                    <button class="btn btn-secondary" onclick="copyLink()"><i class="bi bi-clipboard"></i></button>
-                </div>
-                <a href="#" id="previewLink" target="_blank" class="btn btn-sm btn-outline-light mt-3 w-100">Coba Link</a>
+            <div id="result-area" class="mt-3 text-center" style="display:none;">
+                <input type="text" id="finalUrl" class="form-control text-center mb-2" readonly>
+                <button class="btn btn-secondary w-100" onclick="copyLink()">Salin Link</button>
+                <a href="#" id="previewLink" target="_blank" class="btn btn-outline-light w-100 mt-2 btn-sm">Coba Link</a>
             </div>
         </div>
     </div>
@@ -105,7 +88,7 @@ function handleCreatePage(request) {
                     document.getElementById('result-area').style.display = 'block';
                 }
             } catch (err) { alert('Error'); }
-            btn.innerHTML = 'BUAT LINK TERKUNCI'; btn.disabled = false;
+            btn.innerHTML = 'BUAT LINK'; btn.disabled = false;
         });
         function copyLink() {
             const copyText = document.getElementById("finalUrl");
@@ -128,13 +111,12 @@ async function handleGenerateApi(request, env) {
   } catch (e) { return new Response(JSON.stringify({ success: false }), { status: 500 }); }
 }
 
-// --- HALAMAN USER (STEP BY STEP) ---
+// --- HALAMAN USER (VISIBILITY LOGIC) ---
 async function handleUserPage(id, env) {
   const dataRaw = await env.DATABASE.get(id);
   if (!dataRaw) return new Response("Link Not Found", { status: 404 });
   const data = JSON.parse(dataRaw);
   
-  // Logic Video
   let finalVideo = data.yt_vid;
   if (!finalVideo || finalVideo.trim() === "") finalVideo = CONFIG.YT_DEFAULT_VIDEO;
 
@@ -145,7 +127,7 @@ async function handleUserPage(id, env) {
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <meta name="referrer" content="no-referrer">
-    <title>Selesaikan Langkah</title>
+    <title>Verifikasi Tautan</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;600;800&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css">
@@ -158,18 +140,11 @@ async function handleUserPage(id, env) {
         .subtitle { text-align: center; color: #9ca3af; font-size: 0.9rem; margin-bottom: 25px; }
         
         .action-btn { display: flex; align-items: center; justify-content: space-between; padding: 15px 20px; margin-bottom: 12px; background: #374151; border-radius: 14px; cursor: pointer; transition: all 0.3s ease; text-decoration: none; color: white; border: 1px solid transparent; position: relative; }
-        .action-btn:hover { background: #4b5563; transform: translateY(-2px); }
-        
-        /* STATE STYLES */
-        .action-btn.completed { background: #064e3b; border-color: #10b981; cursor: default; transform: none; }
+        .action-btn:active { transform: scale(0.98); }
+        .action-btn.completed { background: #064e3b; border-color: #10b981; cursor: default; }
         .action-btn.completed .status-icon { color: #10b981; }
-        
-        /* DISABLED STATE (LOCKED) */
         .action-btn.disabled { opacity: 0.4; pointer-events: none; filter: grayscale(100%); }
-
-        /* LOADING STATE */
-        .action-btn.processing { opacity: 0.8; pointer-events: none; border-color: #fbbf24; }
-
+        
         .icon-box { width: 40px; height: 40px; border-radius: 10px; display: flex; align-items: center; justify-content: center; font-size: 1.2rem; margin-right: 15px; }
         .yt-icon { background: rgba(239, 68, 68, 0.2); color: #ef4444; }
         .wa-icon { background: rgba(37, 211, 102, 0.2); color: #25D366; }
@@ -183,40 +158,44 @@ async function handleUserPage(id, env) {
         .progress-container { width: 100%; height: 6px; background: #374151; border-radius: 10px; margin-bottom: 25px; overflow: hidden; }
         #progress-fill { height: 100%; background: #10b981; width: 0%; transition: width 0.5s ease; }
         .checking-state { font-size: 0.8rem; color: #fbbf24; font-style: italic; display: none; }
+        
+        #toast-box { position: fixed; top: 20px; left: 50%; transform: translateX(-50%); background: #ef4444; color: white; padding: 10px 20px; border-radius: 50px; font-size: 0.9rem; font-weight: 600; z-index: 999; display: none; box-shadow: 0 5px 15px rgba(0,0,0,0.5); width: 85%; text-align: center; }
     </style>
 </head>
 <body>
+    <div id="toast-box"></div>
+
     <div class="main-card">
         <div class="title-text">Link Terkunci <i class="bi bi-lock-fill"></i></div>
         <div class="subtitle">Selesaikan langkah secara berurutan.</div>
         <div class="progress-container"><div id="progress-fill"></div></div>
 
-        <!-- 1. SUBSCRIBE (Aktif Awal) -->
+        <!-- 1. SUBSCRIBE -->
         <div class="action-btn" id="btn-sub" onclick="handleClick('sub', '${CONFIG.YT_SUB}')">
             <div class="icon-box yt-icon"><i class="bi bi-youtube"></i></div>
             <div class="btn-text">
                 <div>Subscribe Channel</div>
-                <div class="checking-state" id="msg-sub">Verifikasi...</div>
+                <div class="checking-state" id="msg-sub">Menunggu respon...</div>
             </div>
             <div class="status-icon" id="icon-sub"><i class="bi bi-chevron-right"></i></div>
         </div>
 
-        <!-- 2. LIKE & COMMENT (Disabled Awal) -->
+        <!-- 2. LIKE & COMMENT -->
         <div class="action-btn disabled" id="btn-like" onclick="handleClick('like', '${finalVideo}')">
             <div class="icon-box yt-icon" style="background: rgba(255,255,255,0.1); color:white;"><i class="bi bi-hand-thumbs-up-fill"></i></div>
             <div class="btn-text">
                 <div>Like & Comment Video</div>
-                <div class="checking-state" id="msg-like">Mengecek like...</div>
+                <div class="checking-state" id="msg-like">Menunggu respon...</div>
             </div>
             <div class="status-icon" id="icon-like"><i class="bi bi-lock-fill"></i></div>
         </div>
 
-        <!-- 3. WA CHANNEL (Disabled Awal) -->
+        <!-- 3. WA CHANNEL -->
         <div class="action-btn disabled" id="btn-wa" onclick="handleClick('wa', '${CONFIG.WA_LINK}')">
             <div class="icon-box wa-icon"><i class="bi bi-whatsapp"></i></div>
             <div class="btn-text">
                 <div>Gabung Saluran WA</div>
-                <div class="checking-state" id="msg-wa">Membuka WhatsApp...</div>
+                <div class="checking-state" id="msg-wa">Menunggu respon...</div>
             </div>
             <div class="status-icon" id="icon-wa"><i class="bi bi-lock-fill"></i></div>
         </div>
@@ -228,33 +207,66 @@ async function handleUserPage(id, env) {
 
     <script>
         const _0xTarget = "${encodeURIComponent(data.target)}";
+        
         let status = { sub: false, like: false, wa: false };
-        let isProcessing = false; // Mencegah spam klik
+        let activeStep = null;
+        let leftTime = null;
+        let hasLeftPage = false;
 
         function handleClick(type, url) {
-            // Cek jika sedang proses atau tombol disabled/completed
-            if (isProcessing || status[type]) return;
+            if (status[type]) return;
             const btn = document.getElementById('btn-' + type);
             if (btn.classList.contains('disabled')) return;
 
-            isProcessing = true; // Kunci sistem
-            btn.classList.add('processing'); // Efek visual loading
+            // Reset Flag
+            activeStep = type;
+            hasLeftPage = false;
+            leftTime = null;
 
-            // BUKA LINK (DEEP LINK LOGIC)
-            // Menggunakan window.open untuk memicu intent aplikasi
-            const win = window.open(url, '_blank');
-            
+            document.getElementById('msg-' + type).innerText = "Membuka aplikasi...";
             document.getElementById('msg-' + type).style.display = 'block';
 
-            // RANDOM TIMER (8 - 12 Detik)
-            const randomTime = Math.floor(Math.random() * (12000 - 8000 + 1) + 8000);
-            
-            setTimeout(() => {
-                markComplete(type);
-                isProcessing = false; // Buka kunci sistem
-                btn.classList.remove('processing');
-            }, randomTime); 
+            // Buka Link
+            window.location.href = url;
         }
+
+        // LOGIKA PENGECEKAN KELUAR HALAMAN (VISIBILITY API)
+        document.addEventListener("visibilitychange", () => {
+            if (!activeStep) return; // Tidak ada tombol aktif
+
+            if (document.hidden) {
+                // User MEMINIMALKAN browser / Pindah App
+                hasLeftPage = true;
+                leftTime = Date.now();
+                console.log("User meninggalkan halaman...");
+            } else {
+                // User KEMBALI ke browser
+                console.log("User kembali...");
+                
+                if (hasLeftPage && leftTime) {
+                    const timeAway = Date.now() - leftTime;
+                    console.log("Pergi selama: " + timeAway + "ms");
+
+                    // Ambang batas: Minimal 2 detik (2000ms) di luar browser
+                    // Kalau < 2 detik, biasanya cuma kepencet atau glitch
+                    if (timeAway > 2000) {
+                        markComplete(activeStep);
+                    } else {
+                        showToast("Gagal! Anda kembali terlalu cepat.");
+                        resetStep(activeStep);
+                    }
+                } else {
+                    // Kasus: User klik Batal (Tidak pernah 'hidden' tapi kembali fokus)
+                    showToast("Gagal! Harap pilih 'Buka' atau 'Open' di aplikasi.");
+                    resetStep(activeStep);
+                }
+                
+                // Reset session
+                activeStep = null;
+                hasLeftPage = false;
+                leftTime = null;
+            }
+        });
 
         function markComplete(type) {
             status[type] = true;
@@ -266,16 +278,14 @@ async function handleUserPage(id, env) {
             icon.innerHTML = '<i class="bi bi-check-circle-fill"></i>';
             msg.style.display = 'none';
 
-            // LOGIKA ANTRIAN (UNLOCK NEXT STEP)
-            if (type === 'sub') {
-                // Setelah Sub Selesai -> Buka Like
-                unlockStep('btn-like', 'icon-like');
-            } else if (type === 'like') {
-                // Setelah Like Selesai -> Buka WA
-                unlockStep('btn-wa', 'icon-wa');
-            }
+            if (type === 'sub') unlockStep('btn-like', 'icon-like');
+            else if (type === 'like') unlockStep('btn-wa', 'icon-wa');
 
             updateProgress();
+        }
+
+        function resetStep(type) {
+             document.getElementById('msg-' + type).style.display = 'none';
         }
 
         function unlockStep(btnId, iconId) {
@@ -283,7 +293,6 @@ async function handleUserPage(id, env) {
             const nextIcon = document.getElementById(iconId);
             if(nextBtn) {
                 nextBtn.classList.remove('disabled');
-                // Ubah ikon gembok jadi panah
                 nextIcon.innerHTML = '<i class="bi bi-chevron-right"></i>';
             }
         }
@@ -306,8 +315,14 @@ async function handleUserPage(id, env) {
 
         function finalLink() {
             if (!status.sub || !status.like || !status.wa) return;
-            const realUrl = decodeURIComponent(_0xTarget);
-            window.location.href = realUrl; // Redirect langsung
+            window.location.href = decodeURIComponent(_0xTarget);
+        }
+
+        function showToast(msg) {
+            const t = document.getElementById('toast-box');
+            t.innerText = msg;
+            t.style.display = 'block';
+            setTimeout(() => { t.style.display = 'none'; }, 3000);
         }
     </script>
 </body>

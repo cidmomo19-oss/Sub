@@ -12,7 +12,7 @@ const CONFIG = {
   YT_VIDEO: "https://youtu.be/3ij8BoiE1J0?si=XepFCe330EsLCv0O",
   
   // 3. Saluran WhatsApp
-  WA_LINK: "https://whatsapp.com/channel/0029Vb7rcfXLikg2lRjI2S3B"
+  WA_LINK: "https://whatsapp.com/channel/0029Vb6hCJ7CBtxHIx0Xyc0N"
 };
 
 export default {

@@ -9,7 +9,7 @@ const CONFIG = {
   YT_SUB: "https://www.youtube.com/@seputarlinkvidey",
   
   // 2. Video Like & Komen (GANTI LINK INI JIKA ADA VIDEO BARU)
-  YT_VIDEO: "https://youtu.be/SAtawejiQqQ?si=Gfj3lO2k9s1CO3hi",
+  YT_VIDEO: "https://youtu.be/0A4xdvFa2w0?si=UG65UTfXz90SAxM3",
   
   // 3. Saluran WhatsApp
   WA_LINK: "https://whatsapp.com/channel/0029Vb6hCJ7CBtxHIx0Xyc0N"

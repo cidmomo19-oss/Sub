@@ -1,36 +1,54 @@
 /**
- * SUB4UNLOCK PRO - Cloudflare Worker
- * Features: Hardcoded Video (Easy Update), Visibility Detection, Sequential Steps
+ * Direct Link Opener - Cloudflare Worker
+ * Features: Direct Link, Popunder Ad, 1-Month Caching (Saves Quota Limit)
  */
 
-// --- KONFIGURASI LINK (EDIT DI SINI) ---
-const CONFIG = {
-  // 1. Channel Subscribe
-  YT_SUB: "https://www.youtube.com/@seputarlinkvidey",
-  
-  // 2. Video Like & Komen (GANTI LINK INI JIKA ADA VIDEO BARU)
-  YT_VIDEO: "https://youtu.be/lGDjILVzb9c?si=UzIlV-h5gddyAhwy",
-  
-  // 3. Saluran WhatsApp
-  WA_LINK: "https://whatsapp.com/channel/0029Vb6hCJ7CBtxHIx0Xyc0N"
-};
+// Konfigurasi durasi cache: 30 Hari (dalam detik) = 2.592.000 detik
+const CACHE_TTL = 2592000; 
 
 export default {
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
     const path = url.pathname;
 
-    if (path === "/create") return handleCreatePage(request);
+    // 1. Bypass Cache untuk API POST (Karena ini untuk membuat data baru)
     if (path === "/api/generate" && request.method === "POST") return handleGenerateApi(request, env);
     
-    const slug = path.slice(1); 
-    if (slug && slug.length > 0) return handleUserPage(slug, env);
+    // 2. CEK CACHE EDGE CLOUDFLARE (Hanya untuk request GET)
+    const cache = caches.default;
+    if (request.method === "GET") {
+        const cachedResponse = await cache.match(request);
+        if (cachedResponse) {
+            // Jika ada di cache, langsung kembalikan. Ini hemat limit KV & CPU!
+            return cachedResponse;
+        }
+    }
 
-    return Response.redirect(url.origin + "/create", 302);
+    let response;
+
+    // 3. Routing Halaman
+    if (path === "/create") {
+        response = handleCreatePage(request);
+    } else {
+        const slug = path.slice(1); 
+        if (slug && slug.length > 0) {
+            response = await handleUserPage(slug, env);
+        } else {
+            return Response.redirect(url.origin + "/create", 302);
+        }
+    }
+
+    // 4. SIMPAN KE CACHE EDGE (Jika halaman berhasil dimuat / Status 200)
+    if (request.method === "GET" && response.status === 200) {
+        // Response harus di-clone karena body hanya bisa dibaca satu kali
+        ctx.waitUntil(cache.put(request, response.clone()));
+    }
+
+    return response;
   }
 };
 
-// --- HALAMAN CREATE (Sangat Simpel) ---
+// --- HALAMAN CREATE ---
 function handleCreatePage(request) {
   const html = `
 <!DOCTYPE html>
@@ -38,7 +56,7 @@ function handleCreatePage(request) {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Link Locker Pro</title>
+    <title>Link Generator</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css" rel="stylesheet">
     <style>
@@ -52,7 +70,7 @@ function handleCreatePage(request) {
 <body>
     <div class="container">
         <div class="card card-custom mx-auto">
-            <h3 class="text-center mb-4 fw-bold">Link Locker</h3>
+            <h3 class="text-center mb-4 fw-bold">Link Generator</h3>
             <form id="createForm">
                 <div class="mb-3">
                     <label class="mb-2">Link Tujuan (Target)</label>
@@ -60,8 +78,8 @@ function handleCreatePage(request) {
                 </div>
                 
                 <div class="alert alert-custom p-3 mb-3">
-                    <i class="bi bi-info-circle"></i> <b>Info Admin:</b><br>
-                    Video Like/Komen, Channel Sub, dan WA sudah diatur otomatis dari script (Hardcoded).
+                    <i class="bi bi-info-circle"></i> <b>Sistem Aktif:</b><br>
+                    Direct Button + Auto Popunder Ads. Halaman ini dicache otomatis untuk menghemat limit request Anda.
                 </div>
 
                 <button type="submit" id="btnSubmit" class="btn btn-gradient">BUAT LINK</button>
@@ -85,7 +103,6 @@ function handleCreatePage(request) {
                     headers: {'Content-Type': 'application/json'},
                     body: JSON.stringify({
                         target: document.getElementById('target').value
-                        // Tidak perlu kirim yt_vid, sudah di server
                     })
                 });
                 const res = await req.json();
@@ -106,7 +123,15 @@ function handleCreatePage(request) {
 </body>
 </html>
   `;
-  return new Response(html, { headers: { "Content-Type": "text/html" } });
+  
+  // Set header cache 1 Bulan
+  return new Response(html, { 
+      status: 200,
+      headers: { 
+          "Content-Type": "text/html",
+          "Cache-Control": `public, max-age=${CACHE_TTL}, s-maxage=${CACHE_TTL}`
+      } 
+  });
 }
 
 // --- API GENERATE ---
@@ -115,20 +140,26 @@ async function handleGenerateApi(request, env) {
     const data = await request.json();
     const id = Math.random().toString(36).substring(2, 8);
     await env.DATABASE.put(id, JSON.stringify(data));
-    return new Response(JSON.stringify({ success: true, id: id }), { headers: { "Content-Type": "application/json" } });
+    // Jangan cache respon API POST ini
+    return new Response(JSON.stringify({ success: true, id: id }), { 
+        headers: { "Content-Type": "application/json", "Cache-Control": "no-store" } 
+    });
   } catch (e) { return new Response(JSON.stringify({ success: false }), { status: 500 }); }
 }
 
-// --- HALAMAN USER (Logic Visibility) ---
+// --- HALAMAN USER (Tujuan URL) ---
 async function handleUserPage(id, env) {
   const dataRaw = await env.DATABASE.get(id);
-  if (!dataRaw) return new Response("Link Not Found", { status: 404 });
-  const data = JSON.parse(dataRaw);
   
-  // Ambil Link Video dari CONFIG (Hardcode)
-  // Jadi kalau CONFIG diubah, semua link ikut berubah videonya
-  const finalVideo = CONFIG.YT_VIDEO;
-
+  // Jika URL tidak ditemukan (Error 404), Jangan di-cache! Agar kalau suatu saat datanya ada, bisa dibuka lagi
+  if (!dataRaw) {
+      return new Response("Link Not Found / Sudah Kadaluarsa", { 
+          status: 404, 
+          headers: { "Cache-Control": "no-store" } 
+      });
+  }
+  
+  const data = JSON.parse(dataRaw);
   const html = `
 <!DOCTYPE html>
 <html lang="id">
@@ -136,194 +167,58 @@ async function handleUserPage(id, env) {
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <meta name="referrer" content="no-referrer">
-    <title>Verifikasi Tautan</title>
+    <title>Buka Tautan</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;600;800&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css">
     <style>
-        :root { --primary: #ef4444; --wa-color: #25D366; --bg-dark: #111827; --card-bg: #1f2937; }
-        body { background-color: var(--bg-dark); font-family: 'Poppins', sans-serif; color: white; min-height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: center; }
-        .main-card { background: var(--card-bg); border-radius: 24px; padding: 2rem; width: 90%; max-width: 420px; box-shadow: 0 20px 50px rgba(0,0,0,0.5); border: 1px solid #374151; position: relative; overflow: hidden; }
-        .main-card::before { content: ''; position: absolute; top:0; left:0; right:0; height: 6px; background: linear-gradient(90deg, #ef4444, #25D366); }
-        .title-text { font-weight: 800; font-size: 1.5rem; text-align: center; margin-bottom: 5px; }
-        .subtitle { text-align: center; color: #9ca3af; font-size: 0.9rem; margin-bottom: 25px; }
+        :root { --bg-dark: #111827; --card-bg: #1f2937; }
+        body { background-color: var(--bg-dark); font-family: 'Poppins', sans-serif; color: white; min-height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: center; margin: 0; padding: 15px; }
+        .main-card { background: var(--card-bg); border-radius: 24px; padding: 2rem; width: 100%; max-width: 420px; box-shadow: 0 20px 50px rgba(0,0,0,0.5); border: 1px solid #374151; position: relative; overflow: hidden; text-align: center; }
+        .main-card::before { content: ''; position: absolute; top:0; left:0; right:0; height: 6px; background: linear-gradient(90deg, #3b82f6, #8b5cf6); }
+        .title-text { font-weight: 800; font-size: 1.5rem; margin-bottom: 10px; }
+        .subtitle { color: #9ca3af; font-size: 0.9rem; margin-bottom: 25px; }
         
-        .action-btn { display: flex; align-items: center; justify-content: space-between; padding: 15px 20px; margin-bottom: 12px; background: #374151; border-radius: 14px; cursor: pointer; transition: all 0.3s ease; text-decoration: none; color: white; border: 1px solid transparent; position: relative; }
-        .action-btn:active { transform: scale(0.98); }
-        .action-btn.completed { background: #064e3b; border-color: #10b981; cursor: default; }
-        .action-btn.completed .status-icon { color: #10b981; }
-        .action-btn.disabled { opacity: 0.4; pointer-events: none; filter: grayscale(100%); }
-        
-        .icon-box { width: 40px; height: 40px; border-radius: 10px; display: flex; align-items: center; justify-content: center; font-size: 1.2rem; margin-right: 15px; }
-        .yt-icon { background: rgba(239, 68, 68, 0.2); color: #ef4444; }
-        .wa-icon { background: rgba(37, 211, 102, 0.2); color: #25D366; }
-        .btn-text { flex: 1; font-weight: 600; font-size: 0.95rem; }
-        .status-icon { font-size: 1.2rem; color: #6b7280; }
-        .unlock-wrapper { margin-top: 25px; }
-        
-        #unlock-btn { width: 100%; padding: 16px; border-radius: 14px; font-weight: 800; font-size: 1.1rem; text-transform: uppercase; letter-spacing: 1px; background: #374151; color: #9ca3af; border: none; transition: all 0.3s; }
-        #unlock-btn.active { background: linear-gradient(45deg, #3b82f6, #8b5cf6); color: white; box-shadow: 0 0 20px rgba(59, 130, 246, 0.5); animation: pulse 2s infinite; cursor: pointer; }
+        #unlock-btn { width: 100%; padding: 16px; border-radius: 14px; font-weight: 800; font-size: 1.1rem; text-transform: uppercase; letter-spacing: 1px; border: none; transition: all 0.3s; background: linear-gradient(45deg, #3b82f6, #8b5cf6); color: white; box-shadow: 0 0 20px rgba(59, 130, 246, 0.5); animation: pulse 2s infinite; cursor: pointer; }
+        #unlock-btn:hover { transform: scale(1.02); }
+        #unlock-btn:active { transform: scale(0.98); }
         @keyframes pulse { 0% {box-shadow: 0 0 0 0 rgba(59, 130, 246, 0.7);} 70% {box-shadow: 0 0 0 10px rgba(59, 130, 246, 0);} 100% {box-shadow: 0 0 0 0 rgba(59, 130, 246, 0);} }
-        .progress-container { width: 100%; height: 6px; background: #374151; border-radius: 10px; margin-bottom: 25px; overflow: hidden; }
-        #progress-fill { height: 100%; background: #10b981; width: 0%; transition: width 0.5s ease; }
-        .checking-state { font-size: 0.8rem; color: #fbbf24; font-style: italic; display: none; }
-        
-        #toast-box { position: fixed; top: 20px; left: 50%; transform: translateX(-50%); background: #ef4444; color: white; padding: 10px 20px; border-radius: 50px; font-size: 0.9rem; font-weight: 600; z-index: 999; display: none; box-shadow: 0 5px 15px rgba(0,0,0,0.5); width: 85%; text-align: center; }
     </style>
 </head>
 <body>
-    <div id="toast-box"></div>
-
     <div class="main-card">
-        <div class="title-text">Link Terkunci <i class="bi bi-lock-fill"></i></div>
-        <div class="subtitle">Selesaikan langkah secara berurutan.</div>
-        <div class="progress-container"><div id="progress-fill"></div></div>
-
-        <!-- 1. SUBSCRIBE (CONFIG) -->
-        <div class="action-btn" id="btn-sub" onclick="handleClick('sub', '${CONFIG.YT_SUB}')">
-            <div class="icon-box yt-icon"><i class="bi bi-youtube"></i></div>
-            <div class="btn-text">
-                <div>Subscribe Channel</div>
-                <div class="checking-state" id="msg-sub">Menunggu respon...</div>
-            </div>
-            <div class="status-icon" id="icon-sub"><i class="bi bi-chevron-right"></i></div>
-        </div>
-
-        <!-- 2. LIKE & COMMENT (CONFIG) -->
-        <div class="action-btn disabled" id="btn-like" onclick="handleClick('like', '${finalVideo}')">
-            <div class="icon-box yt-icon" style="background: rgba(255,255,255,0.1); color:white;"><i class="bi bi-hand-thumbs-up-fill"></i></div>
-            <div class="btn-text">
-                <div>Like & Comment Video</div>
-                <div class="checking-state" id="msg-like">Menunggu respon...</div>
-            </div>
-            <div class="status-icon" id="icon-like"><i class="bi bi-lock-fill"></i></div>
-        </div>
-
-        <!-- 3. WA CHANNEL (CONFIG) -->
-        <div class="action-btn disabled" id="btn-wa" onclick="handleClick('wa', '${CONFIG.WA_LINK}')">
-            <div class="icon-box wa-icon"><i class="bi bi-whatsapp"></i></div>
-            <div class="btn-text">
-                <div>Gabung Saluran WA</div>
-                <div class="checking-state" id="msg-wa">Menunggu respon...</div>
-            </div>
-            <div class="status-icon" id="icon-wa"><i class="bi bi-lock-fill"></i></div>
-        </div>
+        <div class="title-text">Tautan Siap <i class="bi bi-link-45deg"></i></div>
+        <div class="subtitle">Klik tombol di bawah ini untuk langsung menuju ke tautan tujuan Anda.</div>
 
         <div class="unlock-wrapper">
-            <button id="unlock-btn" disabled onclick="finalLink()"><i class="bi bi-lock"></i> TERKUNCI</button>
+            <button id="unlock-btn" onclick="finalLink()"><i class="bi bi-unlock-fill"></i> BUKA LINK</button>
         </div>
     </div>
 
     <script>
         const _0xTarget = "${encodeURIComponent(data.target)}";
-        
-        let status = { sub: false, like: false, wa: false };
-        let activeStep = null;
-        let leftTime = null;
-        let hasLeftPage = false;
-
-        function handleClick(type, url) {
-            if (status[type]) return;
-            const btn = document.getElementById('btn-' + type);
-            if (btn.classList.contains('disabled')) return;
-
-            activeStep = type;
-            hasLeftPage = false;
-            leftTime = null;
-
-            document.getElementById('msg-' + type).innerText = "Membuka aplikasi...";
-            document.getElementById('msg-' + type).style.display = 'block';
-
-            window.location.href = url;
-        }
-
-        // LOGIKA VISIBILITY (ANTI-CHEAT)
-        document.addEventListener("visibilitychange", () => {
-            if (!activeStep) return;
-
-            if (document.hidden) {
-                // User minimize / pindah tab
-                hasLeftPage = true;
-                leftTime = Date.now();
-            } else {
-                // User kembali
-                if (hasLeftPage && leftTime) {
-                    const timeAway = Date.now() - leftTime;
-                    
-                    // Batas waktu: Minimal 2 Detik di luar browser
-                    if (timeAway > 2000) {
-                        markComplete(activeStep);
-                    } else {
-                        showToast("Gagal! Anda kembali terlalu cepat.");
-                        document.getElementById('msg-' + activeStep).style.display = 'none';
-                    }
-                } else {
-                    // Kasus klik Batal (Tidak hidden)
-                    showToast("Gagal! Harap buka aplikasi.");
-                    document.getElementById('msg-' + activeStep).style.display = 'none';
-                }
-                
-                activeStep = null;
-                hasLeftPage = false;
-                leftTime = null;
-            }
-        });
-
-        function markComplete(type) {
-            status[type] = true;
-            const btn = document.getElementById('btn-' + type);
-            const icon = document.getElementById('icon-' + type);
-            const msg = document.getElementById('msg-' + type);
-
-            btn.classList.add('completed');
-            icon.innerHTML = '<i class="bi bi-check-circle-fill"></i>';
-            msg.style.display = 'none';
-
-            if (type === 'sub') unlockStep('btn-like', 'icon-like');
-            else if (type === 'like') unlockStep('btn-wa', 'icon-wa');
-
-            updateProgress();
-        }
-
-        function unlockStep(btnId, iconId) {
-            const nextBtn = document.getElementById(btnId);
-            const nextIcon = document.getElementById(iconId);
-            if(nextBtn) {
-                nextBtn.classList.remove('disabled');
-                nextIcon.innerHTML = '<i class="bi bi-chevron-right"></i>';
-            }
-        }
-
-        function updateProgress() {
-            let count = 0;
-            if (status.sub) count++;
-            if (status.like) count++;
-            if (status.wa) count++;
-            document.getElementById('progress-fill').style.width = ((count / 3) * 100) + '%';
-            if (count === 3) enableUnlock();
-        }
-
-        function enableUnlock() {
-            const mainBtn = document.getElementById('unlock-btn');
-            mainBtn.disabled = false;
-            mainBtn.classList.add('active');
-            mainBtn.innerHTML = '<i class="bi bi-unlock-fill"></i> BUKA LINK';
-        }
 
         function finalLink() {
-            if (!status.sub || !status.like || !status.wa) return;
-            window.location.href = decodeURIComponent(_0xTarget);
-        }
-
-        function showToast(msg) {
-            const t = document.getElementById('toast-box');
-            t.innerText = msg;
-            t.style.display = 'block';
-            setTimeout(() => { t.style.display = 'none'; }, 3000);
+            // Link iklan untuk tab lama
+            const adUrl = "https://conductivebreeds.com/bmaye227ji?key=21143f6352edf65a6b64615e9bb37bb9";
+            
+            // Link target asli di tab baru
+            const targetUrl = decodeURIComponent(_0xTarget);
+            
+            window.open(targetUrl, '_blank');
+            window.location.href = adUrl;
         }
     </script>
 </body>
 </html>
   `;
-  return new Response(html, { headers: { "Content-Type": "text/html" } });
+  
+  // Set header cache 1 Bulan untuk halaman User
+  return new Response(html, { 
+      status: 200,
+      headers: { 
+          "Content-Type": "text/html",
+          "Cache-Control": `public, max-age=${CACHE_TTL}, s-maxage=${CACHE_TTL}`
+      } 
+  });
 }
